@@ -49,7 +49,8 @@ let rafId = null;
 let paused = false;
 
 function makePlayer(x,y,color){
-  return { x,y, angle:0, hp:100, maxHp:100, speed:3.1, radius:16, color, fireCd:0, alive:true };
+  return { x,y, angle:0, hp:100, maxHp:100, speed:3.1, radius:16, color, fireCd:0, alive:true,
+    rapidUntil:0, multiUntil:0 };
 }
 
 function newState(){
@@ -58,6 +59,7 @@ function newState(){
     bullets: [],       // {x,y,vx,vy,owner:'p'|'e'|'mp',dmg,life}
     enemies: [],        // offline bots
     particles: [],
+    pickups: [],         // power-ups on the map {id,x,y,type}
     remote: null,       // opponent avatar for multiplayer
     remoteBullets: [],
     t0: performance.now(),
@@ -66,8 +68,26 @@ function newState(){
     wave: 1,
     missionIdx: 0,
     spawnTimer: 0,
+    pickupTimer: 300,
     finished:false,
   };
+}
+
+const PICKUP_TYPES = {
+  health: { color:'#39ff88', label:'+30 HP' },
+  rapid:  { color:'#ffb238', label:'RAPID FIRE!' },
+  multi:  { color:'#ff5fd6', label:'MULTI SHOT!' },
+};
+function randomPickupType(){
+  const keys = Object.keys(PICKUP_TYPES);
+  return keys[Math.floor(Math.random()*keys.length)];
+}
+function applyPickup(p, type){
+  const now = performance.now();
+  if(type==='health'){ p.hp = Math.min(p.maxHp, p.hp+30); }
+  else if(type==='rapid'){ p.rapidUntil = now+8000; }
+  else if(type==='multi'){ p.multiUntil = now+8000; }
+  toast(PICKUP_TYPES[type].label);
 }
 
 // ---------- Input: keyboard + mouse (desktop) ----------
@@ -85,10 +105,7 @@ const stick = document.getElementById('stick');
 const fireBtn = document.getElementById('fireBtn');
 let joyVec = {x:0,y:0,active:false};
 let touchFire = false;
-let touchAimAngle = 0;
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
-let aimTouchId = null;   // finger currently dragging on the right-side aim zone
-let aiming = false;      // true while that finger is down
 
 function setupJoystick(){
   let jTouchId=null, center=null;
@@ -120,37 +137,9 @@ function setupJoystick(){
   fireBtn.addEventListener('touchstart', e=>{
     e.preventDefault();
     const t=e.changedTouches[0]; fTouchId=t.identifier; touchFire=true;
-    touchAimAngle = state ? state.player.angle : 0;
   }, {passive:false});
   fireBtn.addEventListener('touchend', e=>{ touchFire=false; fTouchId=null; });
   fireBtn.addEventListener('touchcancel', ()=> touchFire=false);
-
-  // aim by dragging anywhere on right half of screen — full lifecycle so the
-  // angle doesn't go stale, and releases cleanly back to movement-based aim
-  function aimFromTouch(t){
-    const r = fireBtn.getBoundingClientRect();
-    const cx = r.left+r.width/2, cy=r.top+r.height/2;
-    touchAimAngle = Math.atan2(t.clientY-cy, t.clientX-cx);
-  }
-  canvas.addEventListener('touchstart', e=>{
-    for(const t of e.changedTouches){
-      if(aimTouchId===null && t.clientX > innerWidth*0.5){
-        aimTouchId = t.identifier; aiming = true; aimFromTouch(t);
-      }
-    }
-  }, {passive:true});
-  canvas.addEventListener('touchmove', e=>{
-    for(const t of e.touches){
-      if(t.identifier===aimTouchId) aimFromTouch(t);
-    }
-  }, {passive:true});
-  function endAim(e){
-    for(const t of e.changedTouches){
-      if(t.identifier===aimTouchId){ aimTouchId=null; aiming=false; }
-    }
-  }
-  canvas.addEventListener('touchend', endAim);
-  canvas.addEventListener('touchcancel', endAim);
 }
 setupJoystick();
 
@@ -246,30 +235,49 @@ function movePlayer(dt, p){
   p.x = Math.max(p.radius, Math.min(innerWidth-p.radius, p.x));
   p.y = Math.max(p.radius, Math.min(innerHeight-p.radius, p.y));
 
-  // aim priority: active right-side drag > joystick movement heading > mouse (desktop)
-  if(aiming){
-    p.angle = touchAimAngle;
-  } else if(joyVec.active && len>0.15){
+  // AUTO-AIM: gun always tracks the nearest live target on its own.
+  // Falls back to movement heading if nothing is around to shoot at.
+  const target = findAutoAimTarget(p);
+  if(target){
+    p.angle = Math.atan2(target.y-p.y, target.x-p.x);
+  } else if(len>0.1){
     p.angle = Math.atan2(dy,dx);
-  } else if(!isTouchDevice){
-    p.angle = Math.atan2(mouse.y-p.y, mouse.x-p.x);
   }
-  // if touch device, idle joystick + no drag => keep last facing angle (no snap-back)
+}
+
+function findAutoAimTarget(p){
+  if(mode==='offline'){
+    let best=null, bd=Infinity;
+    state.enemies.forEach(en=>{
+      const d=Math.hypot(en.x-p.x, en.y-p.y);
+      if(d<bd){ bd=d; best=en; }
+    });
+    return best;
+  } else if(state && state.remote){
+    return state.remote;
+  }
+  return null;
 }
 
 function tryFire(p, ownerTag, dt){
   p.fireCd -= dt;
   const wantFire = mouse.down || touchFire;
+  const now = performance.now();
+  const rapid = p.rapidUntil > now;
+  const multi = p.multiUntil > now;
   if(wantFire && p.fireCd<=0){
-    p.fireCd = 9; // frames-ish
+    p.fireCd = rapid ? 4 : 9;
     const speed = 9;
-    state.bullets.push({
-      x:p.x+Math.cos(p.angle)*p.radius, y:p.y+Math.sin(p.angle)*p.radius,
-      vx:Math.cos(p.angle)*speed, vy:Math.sin(p.angle)*speed,
-      owner:ownerTag, life:70
+    const angles = multi ? [p.angle-0.14, p.angle+0.14] : [p.angle];
+    angles.forEach(a=>{
+      state.bullets.push({
+        x:p.x+Math.cos(a)*p.radius, y:p.y+Math.sin(a)*p.radius,
+        vx:Math.cos(a)*speed, vy:Math.sin(a)*speed,
+        owner:ownerTag, life:70
+      });
     });
     spawnMuzzle(p.x,p.y,p.angle);
-    if(mode!=='offline' && netSend) netSend({t:'shot', x:p.x,y:p.y,angle:p.angle});
+    if(mode!=='offline' && netSend) netSend({t:'shot', x:p.x,y:p.y,angle:p.angle, multi});
   }
 }
 
@@ -327,7 +335,10 @@ function updateOffline(dt){
         if(Math.hypot(en.x-b.x,en.y-b.y) < en.radius){
           en.hp -= 12;
           spawnExplosion(b.x,b.y,'#ffb238');
-          if(en.hp<=0){ en.dead=true; spawnExplosion(en.x,en.y,'#ff3b3b'); state.kills++; }
+          if(en.hp<=0){
+            en.dead=true; spawnExplosion(en.x,en.y,'#ff3b3b'); state.kills++;
+            if(Math.random()<0.6) state.pickups.push({id:Math.random().toString(36).slice(2),x:en.x,y:en.y,type:randomPickupType()});
+          }
           return false;
         }
       }
@@ -340,6 +351,18 @@ function updateOffline(dt){
     return true;
   });
   state.enemies = state.enemies.filter(en=>!en.dead);
+
+  // pickups — walk over to collect
+  state.pickups = state.pickups.filter(pu=>{
+    if(Math.hypot(p.x-pu.x, p.y-pu.y) < p.radius+14){
+      applyPickup(p, pu.type);
+      return false;
+    }
+    return true;
+  });
+
+  // slow passive regen so offline missions don't feel unwinnable, without making health trivial
+  p.hp = Math.min(p.maxHp, p.hp + 0.03*dt);
 
   // particles
   state.particles = state.particles.filter(pt=>{ pt.x+=pt.vx; pt.y+=pt.vy; pt.life--; return pt.life>0; });
@@ -407,6 +430,16 @@ function render(){
   });
   // enemies (offline)
   state.enemies.forEach(en=> drawShip(en.x,en.y,en.angle,'#ff3b3b',en.hp/en.maxHp));
+  // power-up pickups
+  if(state.pickups) state.pickups.forEach(pu=>{
+    const c = PICKUP_TYPES[pu.type].color;
+    const pulse = 5+Math.sin(performance.now()/150+pu.x)*2;
+    ctx.save();
+    ctx.shadowColor=c; ctx.shadowBlur=18;
+    ctx.fillStyle=c;
+    ctx.beginPath(); ctx.arc(pu.x,pu.y,10+pulse*0.3,0,7); ctx.fill();
+    ctx.restore();
+  });
   // remote player (mp)
   if(state.remote) drawShip(state.remote.x,state.remote.y,state.remote.angle,'#ffb238',state.remote.hp/100);
   // player
@@ -496,6 +529,10 @@ function attachConnHandlers(){
       if(state.player.hp<=0 && !state.finished) endMPMatch(false);
     } else if(data.t==='dead'){
       if(!state.finished) endMPMatch(true);
+    } else if(data.t==='pickup_spawn'){
+      state.pickups.push({id:data.id, x:data.x, y:data.y, type:data.type});
+    } else if(data.t==='pickup_taken'){
+      state.pickups = state.pickups.filter(pu=>pu.id!==data.id);
     }
   });
   conn.on('close', ()=>{ if(state && !state.finished){ toast('Opponent disconnected'); } });
@@ -527,7 +564,20 @@ function updateMultiplayer(dt){
   movePlayer(dt,p);
   tryFire(p,'mp',dt);
 
-  // local bullets vs remote avatar (client-side hit report)
+  // host spawns a random power-up on the map every ~9s (bullet contact collects it)
+  if(isHost){
+    state.pickupTimer -= dt;
+    if(state.pickupTimer<=0 && state.pickups.length<2){
+      state.pickupTimer = 480+Math.random()*220;
+      const pu = {id:Math.random().toString(36).slice(2),
+        x: 80+Math.random()*(innerWidth-160), y: 80+Math.random()*(innerHeight-160),
+        type: randomPickupType()};
+      state.pickups.push(pu);
+      netSend({t:'pickup_spawn', id:pu.id, x:pu.x, y:pu.y, type:pu.type});
+    }
+  }
+
+  // local bullets vs remote avatar (client-side hit report) + vs power-ups
   state.bullets = state.bullets.filter(b=>{
     b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
     if(b.x<-20||b.x>innerWidth+20||b.y<-20||b.y>innerHeight+20) return false;
@@ -536,6 +586,14 @@ function updateMultiplayer(dt){
       netSend({t:'hit', dmg:12});
       spawnExplosion(b.x,b.y,'#ffb238');
       return false;
+    }
+    for(const pu of state.pickups){
+      if(Math.hypot(pu.x-b.x, pu.y-b.y) < 16){
+        applyPickup(p, pu.type);
+        state.pickups = state.pickups.filter(x=>x.id!==pu.id);
+        netSend({t:'pickup_taken', id:pu.id});
+        return false;
+      }
     }
     return true;
   });
