@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Strike Zone</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0e14">
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#121822; --panel:#151c28;
+    --accent:#39ff88; --accent2:#ff3b3b; --amber:#ffb238;
+    --text:#e8f0ff; --muted:#5c6b82; --line:#22303f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:var(--bg);overflow:hidden;
+    font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;background:#0d1420;width:100%;height:100%;touch-action:none;}
+
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 20%, #17202e 0%, #0a0e14 70%); z-index:20; padding:20px; text-align:center;}
+  .hidden{display:none !important;}
+
+  h1.logo{font-size:44px;letter-spacing:4px;margin:0 0 4px;color:var(--accent);
+    text-shadow:0 0 18px rgba(57,255,136,.5);}
+  .sub{color:var(--muted);margin-bottom:34px;letter-spacing:2px;font-size:12px;}
+
+  .btn{background:var(--panel);border:1px solid var(--line);color:var(--text);
+    padding:16px 30px;margin:8px;border-radius:10px;font-size:16px;letter-spacing:1px;
+    cursor:pointer;min-width:260px;transition:.15s;}
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(135deg,#1c3d2a,#0f2318);border-color:var(--accent);color:var(--accent);}
+  .btn.danger{border-color:var(--accent2);color:var(--accent2);}
+  .btn.amber{border-color:var(--amber);color:var(--amber);}
+  .btn:disabled{opacity:.35;pointer-events:none;}
+
+  .missionGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;max-width:520px;width:100%;margin-bottom:20px;}
+  .missionCard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;text-align:left;}
+  .missionCard:active{transform:scale(.97);}
+  .missionCard .mNum{color:var(--accent);font-size:12px;letter-spacing:2px;}
+  .missionCard .mName{font-size:15px;margin:4px 0;}
+  .missionCard .mDesc{font-size:11px;color:var(--muted);}
+
+  input.roomInput{background:var(--bg2);border:1px solid var(--line);color:var(--text);
+    padding:14px;border-radius:8px;font-size:15px;width:280px;text-align:center;margin:6px;}
+  .linkBox{background:var(--bg2);border:1px dashed var(--accent);border-radius:8px;padding:10px 14px;
+    font-size:12px;word-break:break-all;max-width:320px;margin:10px 0;color:var(--accent);}
+  .status{font-size:13px;color:var(--muted);min-height:20px;margin-top:6px;}
+
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:15;font-size:13px;}
+  .hudTop{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+    padding:12px 16px;background:linear-gradient(#0a0e14ee,transparent);}
+  .barWrap{width:150px;}
+  .barLabel{font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;}
+  .bar{height:10px;background:#1a2330;border-radius:5px;overflow:hidden;border:1px solid var(--line);}
+  .barFill{height:100%;background:linear-gradient(90deg,var(--accent),#1fbf62);transition:width .15s;}
+  .barFill.enemyBar{background:linear-gradient(90deg,var(--accent2),#c22);}
+  .objective{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#0a0e14cc;
+    border:1px solid var(--line);padding:8px 16px;border-radius:20px;font-size:12px;color:var(--amber);white-space:nowrap;}
+  .waveTag{position:absolute;top:52px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--muted);}
+
+  .joystick{position:absolute;bottom:30px;left:30px;width:110px;height:110px;border-radius:50%;
+    background:#ffffff10;border:2px solid #ffffff30;pointer-events:auto;}
+  .stick{position:absolute;width:46px;height:46px;border-radius:50%;background:#ffffff40;
+    top:32px;left:32px;pointer-events:none;}
+  .fireBtn{position:absolute;bottom:40px;right:36px;width:88px;height:88px;border-radius:50%;
+    background:radial-gradient(circle,#ff3b3b55,#ff3b3b22);border:2px solid var(--accent2);
+    pointer-events:auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--accent2);letter-spacing:1px;}
+  .fireBtn:active{background:#ff3b3b55;}
+  .pauseBtn{position:absolute;top:12px;right:12px;pointer-events:auto;background:#0a0e14cc;
+    border:1px solid var(--line);color:var(--muted);width:34px;height:34px;border-radius:8px;font-size:16px;}
+
+  .toast{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:26px;
+    color:var(--amber);text-shadow:0 0 12px #000; font-weight:bold; letter-spacing:2px; opacity:0; pointer-events:none;}
+
+  @media (min-width:820px){
+    .joystick,.fireBtn{transform:scale(1.1);}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- MAIN MENU -->
+  <div id="menu" class="screen">
+    <h1 class="logo">STRIKE ZONE</h1>
+    <div class="sub">TOP-DOWN COMBAT · OFFLINE + ONLINE</div>
+    <button class="btn primary" onclick="showMissions()">OFFLINE MISSIONS</button>
+    <button class="btn danger" onclick="showMultiplayer()">ONLINE MULTIPLAYER</button>
+    <div class="status" style="margin-top:20px;">v1.0 · works with no internet in offline mode</div>
+  </div>
+
+  <!-- MISSION SELECT -->
+  <div id="missionMenu" class="screen hidden">
+    <h1 class="logo" style="font-size:26px;">SELECT MISSION</h1>
+    <div class="missionGrid" id="missionGrid"></div>
+    <button class="btn" onclick="backToMenu()">← BACK</button>
+  </div>
+
+  <!-- MULTIPLAYER MENU -->
+  <div id="mpMenu" class="screen hidden">
+    <h1 class="logo" style="font-size:26px;">ONLINE MULTIPLAYER</h1>
+    <div class="sub">Peer-to-peer · needs a working internet link once, then stays light on data</div>
+    <button class="btn amber" id="hostBtn" onclick="hostGame()">CREATE ROOM (Host)</button>
+    <div id="hostInfo" class="hidden">
+      <div class="linkBox" id="roomLink"></div>
+      <button class="btn" onclick="copyLink()">COPY LINK</button>
+      <div class="status" id="hostStatus">Waiting for opponent...</div>
+    </div>
+    <div style="height:14px"></div>
+    <input class="roomInput" id="joinInput" placeholder="Paste room code here" />
+    <button class="btn danger" onclick="joinGame()">JOIN ROOM</button>
+    <div class="status" id="joinStatus"></div>
+    <div style="height:10px"></div>
+    <button class="btn" onclick="backToMenu()">← BACK</button>
+  </div>
+
+  <!-- RESULT SCREEN -->
+  <div id="resultScreen" class="screen hidden">
+    <h1 class="logo" id="resultTitle" style="font-size:32px;">MISSION COMPLETE</h1>
+    <div class="sub" id="resultDesc"></div>
+    <button class="btn primary" onclick="retryOrNext()">CONTINUE</button>
+    <button class="btn" onclick="backToMenu()">MAIN MENU</button>
+  </div>
+
+  <!-- IN-GAME HUD -->
+  <div id="hud" class="hidden">
+    <div class="hudTop">
+      <div class="barWrap">
+        <div class="barLabel">YOU</div>
+        <div class="bar"><div class="barFill" id="hpBar" style="width:100%"></div></div>
+      </div>
+      <div class="barWrap" id="enemyBarWrap">
+        <div class="barLabel" style="text-align:right;">ENEMY</div>
+        <div class="bar"><div class="barFill enemyBar" id="enemyHpBar" style="width:100%"></div></div>
+      </div>
+    </div>
+    <div class="objective" id="objectiveText">Objective</div>
+    <div class="waveTag" id="waveTag"></div>
+    <button class="pauseBtn" onclick="togglePause()">⏸</button>
+    <div class="toast" id="toast"></div>
+    <div class="joystick" id="joystick"><div class="stick" id="stick"></div></div>
+    <div class="fireBtn" id="fireBtn">FIRE</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
