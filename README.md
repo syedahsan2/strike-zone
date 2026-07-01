@@ -1,70 +1,64 @@
-# Strike Zone — Shooting Game
-
-Top-down shooter. Offline missions + Online 1v1 multiplayer via shareable link.
-No coins/currency system. PWA — installable on Android home screen, offline-capable.
-
-## Files
-- `index.html` — screens/UI
-- `game.js` — game engine (offline AI missions + PeerJS multiplayer)
-- `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png` — PWA/offline support
+Here's the professional English version of your project description:
 
 ---
 
-## 1. Local live test (apne PC/phone pe turant dekhna)
+# Strike Zone — Shooting Game
 
-Browsers file:// se service worker aur camera-jaisi APIs allow nahi karte, isliye
-local server chalana zaroori hai. Terminal me:
+A top-down shooter featuring offline missions and online 1v1 multiplayer functionality via shareable links. The game operates without any in-app currency or coin systems. It is built as a Progressive Web App (PWA), making it installable on Android home screens with offline capabilities.
+
+## Project Structure
+- `index.html` — UI screens and interface components
+- `game.js` — Core game engine (offline AI missions + PeerJS multiplayer implementation)
+- `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png` — PWA configuration for offline support and installation
+
+---
+
+## 1. Local Testing Environment
+
+The `file://` protocol in browsers does not support service workers or camera-related APIs. Therefore, a local server is required for testing. Execute the following command in your terminal:
 
 ```bash
 cd shooter-game
 python3 -m http.server 8080
 ```
 
-Phir browser me kholo: `http://localhost:8080`
+Access the game at: `http://localhost:8080`
 
-Same WiFi pe phone se test karna ho toh apne PC ka local IP nikalo
-(`ipconfig` / `ifconfig`) aur phone browser me `http://192.168.x.x:8080` kholo.
-Do devices/tabs kholo — ek "Create Room", dusra link paste karke "Join" — multiplayer live test ho jayega.
+For mobile device testing on the same WiFi network, retrieve your PC's local IP address (`ipconfig` / `ifconfig`) and open `http://192.168.x.x:8080` in your phone's browser. To test multiplayer functionality, open two devices/tabs — one to "Create Room" and the other to "Join" using the provided link.
 
-## 2. Free live hosting (public URL, taake link kahin bhi kaam kare)
+## 2. Free Public Hosting Deployment
 
-**Sabse aasan: GitHub Pages (free, permanent link)**
-1. GitHub pe naya repo banao (e.g. `strike-zone`)
-2. Ye poora `shooter-game` folder push kardo
-3. Repo → Settings → Pages → Source: `main` branch, `/root` → Save
-4. 1-2 min me live URL milega: `https://<username>.github.io/strike-zone/`
+**Recommended: GitHub Pages (Free, Permanent URL)**
+1. Create a new repository on GitHub (e.g., `strike-zone`)
+2. Push the entire `shooter-game` folder to the repository
+3. Navigate to Repository → Settings → Pages → Source: `main` branch, `/root` → Save
+4. Within 1-2 minutes, your live URL will be available: `https://<username>.github.io/strike-zone/`
 
-**Alternative (drag-and-drop, no git needed): Netlify Drop**
-- https://app.netlify.com/drop pe jaake pura folder drag-drop karo, turant live link mil jayega.
+**Alternative (No Git Required): Netlify Drop**
+- Visit https://app.netlify.com/drop and drag-and-drop the entire folder for an instant live link.
 
-Ye link hi tum players ko bhejoge for multiplayer (they open it, join room code).
+This URL serves as the multiplayer entry point — players simply open the link and enter the room code to join.
 
-## 3. APK file (Android install karne ke liye)
+## 3. APK Generation for Android Installation
 
-Is sandbox environment me Android SDK/Gradle nahi hai, isliye main real .apk yahan
-compile nahi kar sakta. Lekin hosting ke baad, **PWABuilder** (Microsoft ka free
-official tool) se 2 minute me APK ban jata hai — bina coding, bina bugs ke:
+Due to the sandboxed environment lacking Android SDK/Gradle, direct APK compilation is not feasible. However, after hosting, **PWABuilder** (Microsoft's official tool) can generate an APK within minutes — no coding required:
 
-1. Apna live URL (step 2 wala) hosted hona chahiye (zaroori hai)
-2. https://www.pwabuilder.com pe jao, apna URL paste karo, "Start"
-3. Ye tumhara manifest.json + sw.js detect karega (already isi liye add kiya hai)
-4. "Android" package select karo → "Generate" → APK/AAB download hoga
-5. Us APK ko phone me install karo (unknown sources allow karna padega)
+1. Ensure your live URL (from step 2) is hosted and accessible
+2. Visit https://www.pwabuilder.com, paste your URL, and click "Start"
+3. The tool will automatically detect your `manifest.json` and `sw.js` files (pre-configured for this purpose)
+4. Select the "Android" package → Click "Generate" → Download the APK/AAB file
+5. Install the APK on your phone (enable "Install from unknown sources" if prompted)
 
-Yehi tareeqa Google khud recommend karta hai PWA-to-APK ke liye, safe aur bug-free hai
-kyunki koi custom native code nahi likha, sirf tumhara existing web game wrap hota hai.
+This is Google's recommended approach for PWA-to-APK conversion, ensuring a bug-free, secure process as it wraps your existing web game without custom native code.
 
-## Gameplay notes
-- **Offline Missions**: 5 missions (eliminate / survive / defend types), bots ke against,
-  koi internet zaroori nahi, koi coins/currency nahi — pure skill objectives.
-- **Online Multiplayer**: Host "Create Room" dabata hai → link/code milta hai → dusra player
-  wahi link kholta hai, auto-join ho jata hai. Connection WebRTC (peer-to-peer) hai, isliye
-  connect hone ke baad data bohot halka jata hai (position + shot events only) — weak/laggy
-  net pe bhi chalne layak hai. (Bilkul zero-internet pe multiplayer possible nahi — us ke liye
-  hi Offline Missions mode hai.)
-- Controls: PC pe WASD + mouse aim + click to fire. Mobile pe left joystick + right FIRE button,
-  screen ke right half pe drag karke aim.
+## Gameplay Specifications
 
-## Agar kuch add/change karwana ho
-Bata dena — waves ki difficulty, mission count, graphics style (character sprites, maps),
-ya damage/health balance sab easily tweak ho sakta hai `game.js` me.
+- **Offline Missions**: 5 mission types (elimination, survival, defense) against AI bots. No internet connection required. No coins or currency — purely skill-based objective completion.
+- **Online Multiplayer**: Host clicks "Create Room" to generate a link/code. The second player opens the same link and automatically joins. Connection utilizes WebRTC (peer-to-peer), transmitting minimal data (only position and shot events) — optimized for low-bandwidth or unstable connections. (Note: Zero-internet multiplayer is not possible; the Offline Missions mode serves this purpose.)
+- **Controls**: 
+  - PC: WASD for movement, mouse for aiming, click to fire
+  - Mobile: Left joystick for movement, right FIRE button, drag on the right half of the screen to aim
+
+## Customization Options
+
+Please inform me if you require any modifications or additions — difficulty scaling, mission count adjustments, graphical style changes (character sprites, maps), or damage/health balancing can be easily tweaked within `game.js`.
