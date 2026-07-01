@@ -74,6 +74,13 @@
   .toast{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:26px;
     color:var(--amber);text-shadow:0 0 12px #000; font-weight:bold; letter-spacing:2px; opacity:0; pointer-events:none;}
 
+  #rotateOverlay{position:fixed;inset:0;z-index:9999;background:#0a0e14;display:none;
+    align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px;}
+  #rotateOverlay.show{display:flex;}
+  .rotIcon{width:60px;height:36px;border:3px solid var(--accent);border-radius:6px;margin-bottom:18px;
+    animation:rot 1.6s ease-in-out infinite;}
+  @keyframes rot{0%,15%{transform:rotate(0deg);}45%,60%{transform:rotate(90deg);}100%{transform:rotate(90deg);}}
+
   @media (min-width:820px){
     .joystick,.fireBtn{transform:scale(1.1);}
   }
@@ -143,6 +150,14 @@
     <div class="toast" id="toast"></div>
     <div class="joystick" id="joystick"><div class="stick" id="stick"></div></div>
     <div class="fireBtn" id="fireBtn">FIRE</div>
+  </div>
+</div>
+
+  <!-- ROTATE DEVICE OVERLAY -->
+  <div id="rotateOverlay">
+    <div class="rotIcon"></div>
+    <div style="font-size:16px;letter-spacing:1px;">Phone ko landscape (side) mein rotate karo</div>
+    <div class="sub" style="margin-top:8px;">Best experience ke liye auto-rotate ON rakho</div>
   </div>
 </div>
 
