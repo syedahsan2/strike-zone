@@ -18,7 +18,7 @@ const screens = {
 };
 const hud = document.getElementById('hud');
 function show(id){ Object.values(screens).forEach(s=>s.classList.add('hidden')); if(screens[id]) screens[id].classList.remove('hidden'); }
-function backToMenu(){ stopGame(); hud.classList.add('hidden'); show('menu'); }
+function backToMenu(){ stopGame(); hud.classList.add('hidden'); show('menu'); checkOrientation(); }
 function showMissions(){ buildMissionGrid(); show('missionMenu'); }
 function showMultiplayer(){ show('mpMenu'); }
 
@@ -37,7 +37,7 @@ function buildMissionGrid(){
     const el = document.createElement('div');
     el.className='missionCard';
     el.innerHTML = `<div class="mNum">MISSION ${i+1}</div><div class="mName">${m.name}</div><div class="mDesc">${m.desc}</div>`;
-    el.onclick = ()=> startOfflineMission(i);
+    el.onclick = ()=>{ enterImmersive(); startOfflineMission(i); };
     grid.appendChild(el);
   });
 }
@@ -86,6 +86,9 @@ const fireBtn = document.getElementById('fireBtn');
 let joyVec = {x:0,y:0,active:false};
 let touchFire = false;
 let touchAimAngle = 0;
+let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+let aimTouchId = null;   // finger currently dragging on the right-side aim zone
+let aiming = false;      // true while that finger is down
 
 function setupJoystick(){
   let jTouchId=null, center=null;
@@ -122,16 +125,32 @@ function setupJoystick(){
   fireBtn.addEventListener('touchend', e=>{ touchFire=false; fTouchId=null; });
   fireBtn.addEventListener('touchcancel', ()=> touchFire=false);
 
-  // aim by dragging anywhere on right half of screen (simple auto-aim toward drag or last movement dir if no drag)
-  canvas.addEventListener('touchmove', e=>{
-    for(const t of e.touches){
-      if(t.clientX > innerWidth*0.5){
-        const r = fireBtn.getBoundingClientRect();
-        const cx = r.left+r.width/2, cy=r.top+r.height/2;
-        touchAimAngle = Math.atan2(t.clientY-cy, t.clientX-cx);
+  // aim by dragging anywhere on right half of screen — full lifecycle so the
+  // angle doesn't go stale, and releases cleanly back to movement-based aim
+  function aimFromTouch(t){
+    const r = fireBtn.getBoundingClientRect();
+    const cx = r.left+r.width/2, cy=r.top+r.height/2;
+    touchAimAngle = Math.atan2(t.clientY-cy, t.clientX-cx);
+  }
+  canvas.addEventListener('touchstart', e=>{
+    for(const t of e.changedTouches){
+      if(aimTouchId===null && t.clientX > innerWidth*0.5){
+        aimTouchId = t.identifier; aiming = true; aimFromTouch(t);
       }
     }
   }, {passive:true});
+  canvas.addEventListener('touchmove', e=>{
+    for(const t of e.touches){
+      if(t.identifier===aimTouchId) aimFromTouch(t);
+    }
+  }, {passive:true});
+  function endAim(e){
+    for(const t of e.changedTouches){
+      if(t.identifier===aimTouchId){ aimTouchId=null; aiming=false; }
+    }
+  }
+  canvas.addEventListener('touchend', endAim);
+  canvas.addEventListener('touchcancel', endAim);
 }
 setupJoystick();
 
@@ -158,6 +177,7 @@ function startOfflineMission(idx){
   show(null);
   paused=false;
   loop();
+  checkOrientation();
 }
 function updateWaveTag(){
   const m = MISSIONS[state.missionIdx];
@@ -226,12 +246,15 @@ function movePlayer(dt, p){
   p.x = Math.max(p.radius, Math.min(innerWidth-p.radius, p.x));
   p.y = Math.max(p.radius, Math.min(innerHeight-p.radius, p.y));
 
-  // aim
-  if(joyVec.active || touchFire){
+  // aim priority: active right-side drag > joystick movement heading > mouse (desktop)
+  if(aiming){
     p.angle = touchAimAngle;
-  } else {
+  } else if(joyVec.active && len>0.15){
+    p.angle = Math.atan2(dy,dx);
+  } else if(!isTouchDevice){
     p.angle = Math.atan2(mouse.y-p.y, mouse.x-p.x);
   }
+  // if touch device, idle joystick + no drag => keep last facing angle (no snap-back)
 }
 
 function tryFire(p, ownerTag, dt){
@@ -416,6 +439,7 @@ function netSend(obj){
 }
 
 function hostGame(){
+  enterImmersive();
   document.getElementById('hostBtn').disabled = true;
   peer = new Peer(); // uses PeerJS free public broker
   peer.on('open', id=>{
@@ -442,6 +466,7 @@ function joinGame(){
   const match = code.match(/room=([a-zA-Z0-9-]+)/);
   if(match) code = match[1];
   if(!code){ document.getElementById('joinStatus').textContent='Enter a room code first.'; return; }
+  enterImmersive();
   document.getElementById('joinStatus').textContent='Connecting...';
   peer = new Peer();
   peer.on('open', ()=>{
@@ -494,6 +519,7 @@ function startMultiplayerMatch(hostSide){
   show(null);
   paused=false;
   loop();
+  checkOrientation();
 }
 
 function updateMultiplayer(dt){
@@ -544,6 +570,30 @@ function endMPMatch(won){
   hud.classList.add('hidden');
   show('result');
 }
+
+// ---------- Fullscreen + landscape lock ----------
+function enterImmersive(){
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+  if(req){ try{ req.call(el).catch(()=>{}); }catch(e){} }
+  if(screen.orientation && screen.orientation.lock){
+    screen.orientation.lock('landscape').catch(()=>{ /* not supported in plain browser tab — overlay below covers this */ });
+  }
+}
+
+// ---------- Rotate-device fallback overlay ----------
+// If landscape lock isn't available (plain browser tab, not installed PWA),
+// show a clear "rotate your phone" prompt instead of a broken layout.
+function checkOrientation(){
+  const overlay = document.getElementById('rotateOverlay');
+  if(isTouchDevice && innerWidth < innerHeight && state && !state.finished){
+    overlay.classList.add('show');
+  } else {
+    overlay.classList.remove('show');
+  }
+}
+addEventListener('resize', checkOrientation);
+addEventListener('orientationchange', checkOrientation);
 
 // ---------- Auto-join if link had ?room= ----------
 window.addEventListener('load', ()=>{
