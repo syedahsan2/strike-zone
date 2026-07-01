@@ -1,7 +1,3 @@
-Here's the professional English version of your project description:
-
----
-
 # Strike Zone — Shooting Game
 
 A top-down shooter featuring offline missions and online 1v1 multiplayer functionality via shareable links. The game operates without any in-app currency or coin systems. It is built as a Progressive Web App (PWA), making it installable on Android home screens with offline capabilities.
