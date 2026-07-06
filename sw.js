@@ -1,38 +1,39 @@
-const CACHE = 'strikezone-v1';
+const CACHE_NAME = 'strike-zone-v3';
 const ASSETS = [
-  './',
-  './index.html',
-  './game.js',
-  './manifest.json',
-  'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'
+  '/',
+  '/index.html',
+  '/game.js',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
-self.addEventListener('install', e=>{
-  e.waitUntil(
-    caches.open(CACHE).then(cache=> cache.addAll(ASSETS).catch(()=>{}))
+// Install
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-self.addEventListener('activate', e=>{
-  e.waitUntil(
-    caches.keys().then(keys=> Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-  );
-  self.clients.claim();
-});
-
-// Cache-first for our own files, network-first fallback to cache for everything else
-self.addEventListener('fetch', e=>{
-  e.respondWith(
-    caches.match(e.request).then(cached=>{
-      if(cached) return cached;
-      return fetch(e.request).then(res=>{
-        try{
-          const clone = res.clone();
-          caches.open(CACHE).then(cache=> cache.put(e.request, clone));
-        }catch(err){}
-        return res;
-      }).catch(()=> cached);
+// Activate
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      );
     })
+  );
+});
+
+// Fetch
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
+      .catch(() => caches.match('/'))
   );
 });
