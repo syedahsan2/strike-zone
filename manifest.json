@@ -1,7 +1,7 @@
 {
   "name": "Strike Zone - Tactical Shooter",
   "short_name": "Strike Zone",
-  "description": "Top-down tactical shooter with offline missions and online PvP",
+  "description": "Top-down tactical shooter with offline missions, online PvP, progression, and skins.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
