@@ -2,7 +2,7 @@
 
 // ---------- CANVAS ----------
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
-const GUN_LEN=26; // distance from character center to the stickman's gun tip — bullets & muzzle flashes originate here
+const GUN_LEN=26;
 function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
 addEventListener('resize',resize);resize();
 
@@ -111,8 +111,8 @@ function spawnEnemy(forceBoss=!1){
  const m=MISSIONS[state.missionIdx],e=Math.floor(Math.random()*4),W=innerWidth,H=innerHeight;
  let x,y;if(e===0){x=-30;y=Math.random()*H}else if(e===1){x=W+30;y=Math.random()*H}else if(e===2){x=Math.random()*W;y=-30}else{x=Math.random()*W;y=H+30}
  x=Math.max(30,Math.min(W-30,x));y=Math.max(30,Math.min(H-30,y));
- let typeKey;if(forceBoss)typeKey='tank';else{const k=Object.keys(ENEMY_TYPES).filter(x=>x!=='tank'||!forceBoss);typeKey=k[Math.floor(Math.random()*k.length)]}
- const type=ENEMY_TYPES[typeKey],isBoss=forceBoss;
+ let typeKey;if(forceBoss)typeKey='tank';else{const k=Object.keys(ENEMY_TYPES);if(state.wave>1&&state.wave%5===0&&Math.random()<.3&&m.level>=6)typeKey='tank';else typeKey=k[Math.floor(Math.random()*k.length)]}
+ const type=ENEMY_TYPES[typeKey],isBoss=forceBoss||(typeKey==='tank'&&state.wave%5===0);
  state.enemies.push({x,y,hp:isBoss?type.hp*3:type.hp+Math.random()*10,maxHp:isBoss?type.hp*3:type.hp+Math.random()*10,speed:m.enemySpeed*type.speed*(1+Math.random()*.2),radius:isBoss?type.radius*1.5:type.radius,fireCd:type.fireRate+Math.random()*200,angle:0,hitFlash:0,type:type,behavior:type.behavior,shootRange:type.range||400+Math.random()*100,spawnAnimation:0,spawnDuration:30,isBoss:isBoss,bossPhase:0});
  if(isBoss)toast('👑 BOSS INCOMING!')
 }
@@ -326,6 +326,82 @@ function showAnnouncement(t){const el=document.createElement('div');el.textConte
 
 // ---------- WEATHER ----------
 const WEATHERS=['clear','rain','fog','snow','night'];let currentWeather='clear',weatherParticles=[];
+
+// ---------- DAILY MISSIONS ----------
+let dailyMissions=JSON.parse(localStorage.getItem('strikeZone_daily'))||{date:new Date().toDateString(),missions:[]};
+const DAILY_MISSIONS=[
+ {id:'daily_kill',name:'Kill 10 enemies',target:10,type:'kills',reward:50},
+ {id:'daily_win',name:'Win 1 mission',target:1,type:'wins',reward:75},
+ {id:'daily_headshot',name:'Get 5 headshots',target:5,type:'headshots',reward:60}
+];
+
+function resetDailyMissions(){
+ const today=new Date().toDateString();
+ if(dailyMissions.date!==today){
+  dailyMissions={date:today,missions:DAILY_MISSIONS.map(m=>({...m,progress:0,completed:!1}))};
+  localStorage.setItem('strikeZone_daily',JSON.stringify(dailyMissions));
+ }
+}
+resetDailyMissions();
+
+function updateMainMenuDaily(){
+ const list=document.getElementById('dailyMissionListMain');
+ if(!list) return;
+ if(!dailyMissions || !dailyMissions.missions){
+  list.innerHTML='<div class="d-item" style="color:var(--muted);text-align:center;padding:10px 0;">Loading missions...</div>';
+  return;
+ }
+ const completedAll = dailyMissions.missions.every(m=>m.completed);
+ if(completedAll){
+  list.innerHTML='<div class="d-item" style="color:var(--green);text-align:center;padding:10px 0;">✅ All Daily Missions Complete!</div>';
+  return;
+ }
+ list.innerHTML = dailyMissions.missions.map(m => `
+  <div class="d-item">
+   <span>${m.completed ? '✅' : '⏳'} ${m.name}</span>
+   <span class="d-progress">${m.progress}/${m.target}</span>
+   <span class="d-reward">+${m.reward}💰</span>
+  </div>
+ `).join('');
+}
+
+function updateDailyUI(){
+ const list=document.getElementById('dailyMissionListFull');
+ if(!list) return;
+ if(!dailyMissions || !dailyMissions.missions){
+  list.innerHTML='<div style="color:var(--muted);padding:10px;text-align:center;">No daily missions available.</div>';
+  return;
+ }
+ list.innerHTML = dailyMissions.missions.map(m => `
+  <div class="mission-item">
+   <span>${m.completed ? '✅' : '⏳'} ${m.name}</span>
+   <span class="progress">${m.progress}/${m.target} ${m.completed ? ' (+'+m.reward+'💰)' : ''}</span>
+  </div>
+ `).join('');
+}
+
+function updateDailyProgress(type, amount=1){
+ if(!dailyMissions || !dailyMissions.missions) return;
+ let updated = false;
+ dailyMissions.missions.forEach(m => {
+  if(m.type === type && !m.completed){
+   m.progress = Math.min(m.target, m.progress + amount);
+   if(m.progress >= m.target){
+    m.completed = true;
+    addCoins(m.reward);
+    toast('📅 DAILY COMPLETE: '+m.name+'! +'+m.reward+' COINS');
+   }
+   updated = true;
+  }
+ });
+ if(updated){
+  localStorage.setItem('strikeZone_daily', JSON.stringify(dailyMissions));
+  updateDailyUI();
+  updateMainMenuDaily();
+ }
+}
+
+// ---------- WEATHER FUNCTIONS ----------
 function changeWeather(){const i=Math.floor(Math.random()*WEATHERS.length);currentWeather=WEATHERS[i];document.getElementById('weatherIndicator').textContent=currentWeather.toUpperCase();toast('🌦️ Weather: '+currentWeather.toUpperCase())}
 function initWeather(){weatherParticles=[];const c=currentWeather==='rain'?300:currentWeather==='snow'?150:50;for(let i=0;i<c;i++)weatherParticles.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,speed:2+Math.random()*4,size:2+Math.random()*3,opacity:.3+Math.random()*.5})}
 function drawWeather(){if(currentWeather==='clear')return;ctx.save();if(currentWeather==='fog'){const g=ctx.createRadialGradient(innerWidth/2,innerHeight/2,innerWidth*.1,innerWidth/2,innerHeight/2,innerWidth*.9);g.addColorStop(0,'rgba(200,210,220,0)');g.addColorStop(.5,'rgba(200,210,220,0.1)');g.addColorStop(1,'rgba(200,210,220,0.3)');ctx.fillStyle=g;ctx.fillRect(0,0,innerWidth,innerHeight)}weatherParticles.forEach(p=>{ctx.globalAlpha=p.opacity;if(currentWeather==='rain'){ctx.strokeStyle='rgba(180,200,255,0.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-2,p.y+15);ctx.stroke();p.y+=p.speed*1.8;p.x-=1}else if(currentWeather==='snow'){ctx.fillStyle='rgba(255,255,255,0.8)';ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,7);ctx.fill();p.y+=p.speed*.8;p.x+=Math.sin(p.y/50)*.5}else if(currentWeather==='night'){ctx.fillStyle='rgba(0,0,20,0.08)';ctx.fillRect(0,0,innerWidth,innerHeight)}if(p.y>innerHeight){p.y=-20;p.x=Math.random()*innerWidth}if(p.x<-20)p.x=innerWidth+20});ctx.globalAlpha=1;ctx.restore()}
@@ -367,15 +443,255 @@ function setupAbilityUI(){if(abilityUISetup)return;abilityUISetup=!0;const panel
 // ---------- MULTIPLAYER ----------
 let peer=null,conn=null,isHost=!1;
 function netSend(obj){if(conn&&conn.open)try{conn.send(obj)}catch(e){}}
-function hostGame(){enterImmersive();document.getElementById('hostBtn').disabled=!0;document.getElementById('hostStatus').textContent='🔧 Creating room...';peer=new Peer(undefined,{debug:2,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});peer.on('open',id=>{isHost=!0;const link=location.origin+location.pathname+'?room='+id;document.getElementById('roomLink').textContent=link;document.getElementById('hostInfo').classList.remove('hidden');document.getElementById('hostStatus').textContent='🔗 Room code: '+id+' — waiting...';toast('✅ Room created!')});peer.on('connection',c=>{conn=c;conn.on('open',()=>{document.getElementById('hostStatus').textContent='⚡ Opponent connected! Starting...';toast('✅ Opponent joined!');resetWeapon();setTimeout(()=>startMultiplayerMatch(!0),700)});attachConnHandlers()});peer.on('error',e=>{console.error(e);document.getElementById('hostStatus').textContent='❌ Error: '+e.type;document.getElementById('hostBtn').disabled=!1})}
-function joinGame(){let code=document.getElementById('joinInput').value.trim();const m=code.match(/room=([a-zA-Z0-9-]+)/);if(m)code=m[1];if(!code){document.getElementById('joinStatus').textContent='⚠️ Enter a room code first.';return}enterImmersive();document.getElementById('joinStatus').textContent='🔄 Connecting...';peer=new Peer(undefined,{debug:2,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});peer.on('open',()=>{let attempts=0;function tryConnect(){attempts++;document.getElementById('joinStatus').textContent='🔄 Attempt '+attempts+'/3...';conn=peer.connect(code,{reliable:!0});conn.on('open',()=>{document.getElementById('joinStatus').textContent='⚡ Connected! Starting...';toast('✅ Connected to host!');resetWeapon();setTimeout(()=>startMultiplayerMatch(!1),700)});attachConnHandlers();setTimeout(()=>{if(!conn||!conn.open){if(attempts<3){document.getElementById('joinStatus').textContent='⏳ Retrying...';tryConnect()}else document.getElementById('joinStatus').textContent='❌ Connection failed.'}},3000)}tryConnect()});peer.on('error',e=>{console.error(e);document.getElementById('joinStatus').textContent='❌ Error: '+e.type})}
-function attachConnHandlers(){conn.on('data',data=>{if(!state)return;if(data.t==='pos'){state.remote=state.remote||{x:0,y:0,angle:0,hp:100};state.remote.x=data.x;state.remote.y=data.y;state.remote.angle=data.angle;state.remote.hp=data.hp;document.getElementById('enemyHpBar').style.width=Math.max(0,data.hp)+'%'}else if(data.t==='shot'){const sp=9;state.remoteBullets.push({x:data.x,y:data.y,vx:Math.cos(data.angle)*sp,vy:Math.sin(data.angle)*sp,life:70,damage:12})}else if(data.t==='hit'){const now=performance.now();if(!(state.player.shieldUntil&&state.player.shieldUntil>now)){state.player.hp-=data.dmg||12;shakeAmount=Math.min(shakeAmount+5,10)}if(state.player.hp<=0&&!state.finished)endMPMatch(!1)}else if(data.t==='dead'){if(!state.finished)endMPMatch(!0)}else if(data.t==='pickup_spawn'){state.pickups.push({id:data.id,x:data.x,y:data.y,type:data.type})}else if(data.t==='pickup_taken'){state.pickups=state.pickups.filter(p=>p.id!==data.id)}else if(data.t==='chat'){chatMessages.push(data.msg);updateChatUI()}});conn.on('close',()=>{if(state&&!state.finished){toast('🔌 Opponent disconnected');document.getElementById('joinStatus').textContent='❌ Disconnected'}})}
+
+// ========== CHAT SYSTEM (FIXED) ==========
+let chatMessages=[],chatOpen=!1;
+
+function initChatUI(){
+ const c=document.getElementById('chatContainer');
+ if(!c) return;
+ c.innerHTML=`
+  <div id="chatMessagesBox" style="flex:1;overflow-y:auto;color:#e8f0ff;font-size:13px;font-family:monospace;margin-bottom:8px;max-height:200px;min-height:80px;padding:4px;"></div>
+  <div style="display:flex;gap:6px;">
+   <input id="chatInputField" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:8px 12px;color:#fff;font-size:13px;font-family:monospace;outline:none;" placeholder="Type message..." autocomplete="off">
+   <button id="chatSendBtn" class="action-btn reload-btn" style="padding:6px 14px;font-size:11px;border-radius:6px;">SEND</button>
+  </div>
+ `;
+ 
+ const input=document.getElementById('chatInputField');
+ const sendBtn=document.getElementById('chatSendBtn');
+ 
+ sendBtn.onclick = function(){ sendChatMessage(); };
+ input.addEventListener('keydown', function(e){
+  if(e.key==='Enter'){ e.preventDefault(); sendChatMessage(); }
+ });
+}
+
+function sendChatMessage(){
+ const input=document.getElementById('chatInputField');
+ if(!input) return;
+ const msg=input.value.trim();
+ if(!msg) return;
+ input.value='';
+ const username=isHost ? '🟡 Host' : '🔵 '+playerName;
+ const full=username+': '+msg;
+ chatMessages.push(full);
+ updateChatUI();
+ if(conn && conn.open) netSend({t:'chat',msg:full});
+}
+
+function updateChatUI(){
+ const box=document.getElementById('chatMessagesBox');
+ if(!box) return;
+ box.innerHTML=chatMessages.map(m => '<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'+m+'</div>').join('');
+ box.scrollTop=box.scrollHeight;
+ // Auto-show chat container if messages arrive
+ const container=document.getElementById('chatContainer');
+ if(container && chatMessages.length>0 && !chatOpen){
+  container.style.display='flex';
+  chatOpen=true;
+ }
+}
+
+function toggleChat(){
+ chatOpen=!chatOpen;
+ const container=document.getElementById('chatContainer');
+ if(!container) return;
+ if(chatOpen){
+  container.style.display='flex';
+  container.style.position='fixed';
+  container.style.bottom='80px';
+  container.style.left='50%';
+  container.style.transform='translateX(-50%)';
+  container.style.width='90%';
+  container.style.maxWidth='420px';
+  container.style.zIndex='999';
+  container.style.background='rgba(10,10,15,0.95)';
+  container.style.border='1px solid rgba(0,212,255,0.25)';
+  container.style.borderRadius='12px';
+  container.style.padding='12px 14px';
+  container.style.backdropFilter='blur(20px)';
+  container.style.boxShadow='0 0 40px rgba(0,212,255,0.1)';
+  container.style.pointerEvents='auto';
+  setTimeout(()=>{
+   const inp=document.getElementById('chatInputField');
+   if(inp) inp.focus();
+  }, 100);
+ } else {
+  container.style.display='none';
+ }
+}
+
+// Show chat bubble button
+let chatBubbleAdded=false;
+function showChatBubble(){
+ if(chatBubbleAdded) return;
+ chatBubbleAdded=true;
+ const btn=document.createElement('button');
+ btn.id='chatBubbleBtn';
+ btn.innerHTML='💬';
+ btn.style.cssText='position:fixed;bottom:20px;right:20px;z-index:998;background:rgba(0,212,255,0.15);border:2px solid rgba(0,212,255,0.3);border-radius:50%;width:56px;height:56px;font-size:28px;color:#00d4ff;cursor:pointer;backdrop-filter:blur(10px);box-shadow:0 0 30px rgba(0,212,255,0.15);transition:all .3s;display:flex;align-items:center;justify-content:center;';
+ btn.onmouseover=function(){ this.style.transform='scale(1.1)'; this.style.boxShadow='0 0 50px rgba(0,212,255,0.3)'; };
+ btn.onmouseout=function(){ this.style.transform='scale(1)'; this.style.boxShadow='0 0 30px rgba(0,212,255,0.15)'; };
+ btn.onclick=function(){
+  if(!conn || !conn.open){
+   toast('❌ No one connected! Create or join a room first.');
+   return;
+  }
+  toggleChat();
+ };
+ document.body.appendChild(btn);
+}
+
+// Update hostGame and joinGame
+function hostGame(){
+ enterImmersive();
+ document.getElementById('hostBtn').disabled=!0;
+ document.getElementById('hostStatus').textContent='🔧 Creating room...';
+ showChatBubble();
+ 
+ peer=new Peer(undefined,{debug:2,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});
+ peer.on('open',id=>{
+  isHost=!0;
+  const link=location.origin+location.pathname+'?room='+id;
+  document.getElementById('roomLink').textContent=link;
+  document.getElementById('hostInfo').classList.remove('hidden');
+  document.getElementById('hostStatus').textContent='🔗 Room code: '+id+' — waiting...';
+  toast('✅ Room created! Share the link.');
+ });
+ peer.on('connection',c=>{
+  conn=c;
+  conn.on('open',()=>{
+   document.getElementById('hostStatus').textContent='⚡ Connected! Chat available! 💬';
+   toast('✅ Opponent joined! Press 💬 or T to chat!');
+   showChatBubble();
+   setTimeout(()=>{
+    if(!chatOpen) toggleChat();
+    toast('💬 Chat opened! Type your message.');
+   }, 600);
+   resetWeapon();
+   setTimeout(()=>startMultiplayerMatch(!0),700);
+  });
+  attachConnHandlers();
+ });
+ peer.on('error',e=>{
+  console.error(e);
+  document.getElementById('hostStatus').textContent='❌ Error: '+e.type;
+  document.getElementById('hostBtn').disabled=!1;
+ });
+}
+
+function joinGame(){
+ let code=document.getElementById('joinInput').value.trim();
+ const m=code.match(/room=([a-zA-Z0-9-]+)/);
+ if(m) code=m[1];
+ if(!code){
+  document.getElementById('joinStatus').textContent='⚠️ Enter a room code first.';
+  return;
+ }
+ enterImmersive();
+ document.getElementById('joinStatus').textContent='🔄 Connecting...';
+ showChatBubble();
+ 
+ peer=new Peer(undefined,{debug:2,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}});
+ peer.on('open',()=>{
+  let attempts=0;
+  function tryConnect(){
+   attempts++;
+   document.getElementById('joinStatus').textContent='🔄 Attempt '+attempts+'/3...';
+   conn=peer.connect(code,{reliable:!0});
+   conn.on('open',()=>{
+    document.getElementById('joinStatus').textContent='⚡ Connected! Chat available! 💬';
+    toast('✅ Connected! Press 💬 or T to chat!');
+    showChatBubble();
+    setTimeout(()=>{
+     if(!chatOpen) toggleChat();
+     toast('💬 Chat opened! Type your message.');
+    }, 600);
+    resetWeapon();
+    setTimeout(()=>startMultiplayerMatch(!1),700);
+   });
+   attachConnHandlers();
+   setTimeout(()=>{
+    if(!conn||!conn.open){
+     if(attempts<3){
+      document.getElementById('joinStatus').textContent='⏳ Retrying...';
+      tryConnect();
+     } else {
+      document.getElementById('joinStatus').textContent='❌ Connection failed.';
+     }
+    }
+   },3000);
+  }
+  tryConnect();
+ });
+ peer.on('error',e=>{
+  console.error(e);
+  document.getElementById('joinStatus').textContent='❌ Error: '+e.type;
+ });
+}
+
+function attachConnHandlers(){
+ conn.on('data',data=>{
+  if(!state)return;
+  if(data.t==='pos'){
+   state.remote=state.remote||{x:0,y:0,angle:0,hp:100};
+   state.remote.x=data.x;state.remote.y=data.y;state.remote.angle=data.angle;state.remote.hp=data.hp;
+   document.getElementById('enemyHpBar').style.width=Math.max(0,data.hp)+'%';
+  }else if(data.t==='shot'){
+   const sp=9;
+   state.remoteBullets.push({x:data.x,y:data.y,vx:Math.cos(data.angle)*sp,vy:Math.sin(data.angle)*sp,life:70,damage:12});
+  }else if(data.t==='hit'){
+   const now=performance.now();
+   if(!(state.player.shieldUntil&&state.player.shieldUntil>now)){
+    state.player.hp-=data.dmg||12;
+    shakeAmount=Math.min(shakeAmount+5,10);
+   }
+   if(state.player.hp<=0&&!state.finished) endMPMatch(!1);
+  }else if(data.t==='dead'){
+   if(!state.finished) endMPMatch(!0);
+  }else if(data.t==='pickup_spawn'){
+   state.pickups.push({id:data.id,x:data.x,y:data.y,type:data.type});
+  }else if(data.t==='pickup_taken'){
+   state.pickups=state.pickups.filter(p=>p.id!==data.id);
+  }else if(data.t==='chat'){
+   chatMessages.push(data.msg);
+   updateChatUI();
+   // Auto-open chat if closed
+   if(!chatOpen){
+    const container=document.getElementById('chatContainer');
+    if(container){
+     container.style.display='flex';
+     chatOpen=true;
+    }
+   }
+  }
+ });
+ conn.on('close',()=>{
+  if(state&&!state.finished){
+   toast('🔌 Opponent disconnected');
+   document.getElementById('joinStatus').textContent='❌ Disconnected';
+  }
+ });
+}
+
+// Add global keyboard listener for T
+document.addEventListener('keydown', function(e){
+ if((e.key==='t'||e.key==='T') && !e.ctrlKey && !e.altKey && !e.metaKey){
+  if(conn && conn.open){
+   toggleChat();
+  } else {
+   toast('❌ No active connection. Join or create a room first.');
+  }
+ }
+});
+
+// ---------- CONTINUE WITH REMAINING CODE ----------
 function copyLink(){const t=document.getElementById('roomLink').textContent;if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast('✅ Link copied!')).catch(()=>fallbackCopy(t));else fallbackCopy(t)}
 function fallbackCopy(t){const i=document.createElement('input');i.value=t;i.style.cssText='position:fixed;opacity:0';document.body.appendChild(i);i.select();try{document.execCommand('copy');toast('✅ Link copied!')}catch(e){toast('❌ Copy failed')}document.body.removeChild(i)}
 function startMultiplayerMatch(hostSide){mode=hostSide?'mp-host':'mp-join';state=newState();state.player=makePlayer(hostSide?innerWidth*.25:innerWidth*.75,innerHeight*.5);state.remote={x:hostSide?innerWidth*.75:innerWidth*.25,y:innerHeight*.5,angle:0,hp:100};document.getElementById('enemyBarWrap').style.display='block';document.getElementById('enemyHpBar').style.width='100%';document.getElementById('missionTitle').textContent='⚡ MULTIPLAYER';document.getElementById('objectiveText').textContent='Eliminate your opponent';document.getElementById('waveInfo').textContent='🔥 PvP';document.getElementById('weaponName').textContent=currentWeapon.name;document.getElementById('weaponIcon').textContent=currentWeapon.icon;document.getElementById('offlineResultBtns').style.display='none';document.getElementById('multiplayerResultBtns').style.display='flex';const sd=document.getElementById('streakDisplay');if(sd)sd.textContent=winStreak>0?'🔥 '+winStreak+'x':'';updateWeaponButtons();hud.classList.remove('hidden');show(null);paused=!1;loop();checkOrientation()}
 function updateMultiplayer(dt){const p=state.player;updateReload(dt);updateCombo();if(grenadeCooldown>0)grenadeCooldown--;updateAbilities(dt);updatePlayerWithAbilities(dt);movePlayer(dt,p);tryFire(p,'mp',dt);if(isHost){state.pickupTimer-=dt;if(state.pickupTimer<=0&&state.pickups.length<2){state.pickupTimer=480+Math.random()*220;const pu={id:Math.random().toString(36).slice(2),x:80+Math.random()*(innerWidth-160),y:80+Math.random()*(innerHeight-160),type:randomPickupType()};state.pickups.push(pu);netSend({t:'pickup_spawn',id:pu.id,x:pu.x,y:pu.y,type:pu.type})}}state.bullets=state.bullets.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.x<-20||b.x>innerWidth+20||b.y<-20||b.y>innerHeight+20||b.life<=0)return!1;if(state.remote&&Math.hypot(state.remote.x-b.x,state.remote.y-b.y)<16){netSend({t:'hit',dmg:b.damage||12});spawnExplosion(b.x,b.y,'#ff6b35');shakeAmount=Math.min(shakeAmount+3,8);return!1}for(const pu of state.pickups){if(Math.hypot(pu.x-b.x,pu.y-b.y)<16){applyPickup(p,pu.type);state.pickups=state.pickups.filter(x=>x.id!==pu.id);netSend({t:'pickup_taken',id:pu.id});return!1}}return!0});state.remoteBullets=(state.remoteBullets||[]).filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;return b.life>0&&b.x>-20&&b.x<innerWidth+20&&b.y>-20&&b.y<innerHeight+20});state.particles=state.particles.filter(pt=>{pt.x+=pt.vx;pt.y+=pt.vy;pt.life--;return pt.life>0});updateHUD();netSend({t:'pos',x:p.x,y:p.y,angle:p.angle,hp:p.hp});if(p.hp<=0&&!state.finished){netSend({t:'dead'});endMPMatch(!1)}}
 function endMPMatch(win){if(state.finished)return;state.finished=!0;paused=!0;if(win){winStreak++;totalWins++;toast('🔥 '+winStreak+'x WIN STREAK!')}else{winStreak=0;totalLosses++;toast('💔 Streak broken')}const rt=document.getElementById('resultTitle'),rd=document.getElementById('resultDesc');rt.textContent=win?'🏆 VICTORY':'💀 DEFEATED';rt.style.color=win?'#22ff88':'#ff2d95';rd.textContent=win?'Coins: '+coins+' · Level: '+level+(winStreak>0?' 🔥 '+winStreak+'x STREAK':''):'You were eliminated.';document.getElementById('offlineResultBtns').style.display='none';document.getElementById('multiplayerResultBtns').style.display='flex';document.getElementById('resultScreen').dataset.win='0';hud.classList.add('hidden');show('result')}
-function updateWinStreak(won){} // handled inline
 
 // ---------- REMATCH ----------
 let rematchRequested=!1,rematchAccepted=!1,rematchTimer=null;
@@ -387,33 +703,11 @@ function acceptRematch(){const o=document.getElementById('rematchRequestOverlay'
 function declineRematch(){const o=document.getElementById('rematchRequestOverlay');if(o)o.remove();netSend({t:'rematch_decline'});toast('❌ Rematch declined')}
 function handleRematchData(data){if(data.t==='rematch_request')showRematchRequest();else if(data.t==='rematch_accept'){rematchAccepted=!0;const o=document.getElementById('rematchOverlay');if(o)o.remove();toast('✅ Opponent accepted!');resetWeapon();setTimeout(()=>startMultiplayerMatch(isHost),500)}else if(data.t==='rematch_decline'){const o=document.getElementById('rematchOverlay');if(o)o.remove();rematchRequested=!1;toast('❌ Opponent declined')}}
 
-// ---------- DAILY MISSIONS ----------
-let dailyMissions=JSON.parse(localStorage.getItem('strikeZone_daily'))||{date:new Date().toDateString(),missions:[]};
-const DAILY_MISSIONS=[{id:'daily_kill',name:'Kill 10 enemies',target:10,type:'kills',reward:50},{id:'daily_win',name:'Win 1 mission',target:1,type:'wins',reward:75},{id:'daily_headshot',name:'Get 5 headshots',target:5,type:'headshots',reward:60}];
-function resetDailyMissions(){const today=new Date().toDateString();if(dailyMissions.date!==today){dailyMissions={date:today,missions:DAILY_MISSIONS.map(m=>({...m,progress:0,completed:!1}))};localStorage.setItem('strikeZone_daily',JSON.stringify(dailyMissions))}}
-resetDailyMissions();
-
-function updateDailyProgress(type,amount=1){dailyMissions.missions.forEach(m=>{if(m.type===type&&!m.completed){m.progress=Math.min(m.target,m.progress+amount);if(m.progress>=m.target){m.completed=!0;addCoins(m.reward);toast('📅 DAILY COMPLETE: '+m.name+'! +'+m.reward+' COINS')}}});localStorage.setItem('strikeZone_daily',JSON.stringify(dailyMissions));updateDailyUI();updateMainMenuDaily()}
-function updateDailyUI(){const l=document.getElementById('dailyMissionListFull');if(l)l.innerHTML=dailyMissions.missions.map(m=>`<div class="mission-item"><span>${m.completed?'✅':'⏳'} ${m.name}</span><span class="progress">${m.progress}/${m.target} ${m.completed?' (+'+m.reward+'💰)':''}</span></div>`).join('')}
-// NEW: Update main menu daily missions
-function updateMainMenuDaily(){const l=document.getElementById('dailyMissionListMain');if(l)l.innerHTML=dailyMissions.missions.map(m=>`<div class="d-item"><span>${m.completed?'✅':'⏳'} ${m.name}</span><span class="d-progress">${m.progress}/${m.target}</span><span class="d-reward">+${m.reward}💰</span></div>`).join('')}
-
 // ---------- ACHIEVEMENTS ----------
 const ACHIEVEMENTS=[{id:'first_kill',name:'First Blood',desc:'Get your first kill',check:()=>killCount>=1,reward:50},{id:'kill_50',name:'Killer Instinct',desc:'Kill 50 enemies',check:()=>killCount>=50,reward:200},{id:'survive_60',name:'Survivor',desc:'Survive 60 seconds',check:()=>state&&state.elapsed>=60,reward:150},{id:'combo_10',name:'Combo Master',desc:'Reach 10x combo',check:()=>comboCount>=10,reward:300},{id:'win_10',name:'Champion',desc:'Win 10 missions',check:()=>totalWins>=10,reward:500}];
 let unlockedAchievements=JSON.parse(localStorage.getItem('strikeZone_achievements'))||[];
 function checkAchievements(){ACHIEVEMENTS.forEach(a=>{if(!unlockedAchievements.includes(a.id)&&a.check()){unlockedAchievements.push(a.id);localStorage.setItem('strikeZone_achievements',JSON.stringify(unlockedAchievements));addCoins(a.reward);toast('🏆 ACHIEVEMENT: '+a.name+'! +'+a.reward+' COINS');showAnnouncement('🏆 '+a.name)}})}
 function updateProgressionUI(){const l=document.getElementById('achievementList');if(l)l.innerHTML=ACHIEVEMENTS.map(a=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);">${unlockedAchievements.includes(a.id)?'✅':'⬜'} ${a.name} — ${a.desc} ${unlockedAchievements.includes(a.id)?'(+'+a.reward+'💰)':''}</div>`).join('');const s=document.getElementById('skinList');if(s)s.innerHTML='Skins coming soon!'}
-
-// ---------- CHAT ----------
-let chatMessages=[],chatOpen=!1;
-function initChatUI(){const c=document.getElementById('chatContainer');c.innerHTML='<div id="chatMessages" style="flex:1;overflow-y:auto;color:#e8f0ff;font-size:12px;font-family:monospace;margin-bottom:8px;"></div><div style="display:flex;gap:6px;"><input id="chatInput" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px;color:#fff;font-size:12px;" placeholder="Type..."><button id="chatSend" class="action-btn reload-btn" style="padding:6px 12px;">SEND</button></div>';document.getElementById('chatSend').onclick=sendChatMessage;document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendChatMessage()})}
-function sendChatMessage(){const input=document.getElementById('chatInput');if(!input.value.trim())return;const msg=input.value.trim();input.value='';const username=isHost?'Host':playerName;const full=username+': '+msg;chatMessages.push(full);updateChatUI();if(conn&&conn.open)netSend({t:'chat',msg:full})}
-function updateChatUI(){const c=document.getElementById('chatMessages');if(!c)return;c.innerHTML=chatMessages.map(m=>'<div>'+m+'</div>').join('');c.scrollTop=c.scrollHeight}
-function toggleChat(){chatOpen=!chatOpen;document.getElementById('chatContainer').style.display=chatOpen?'flex':'none';if(chatOpen)document.getElementById('chatInput').focus()}
-
-// ---------- SPECTATOR ----------
-let spectatorMode=!1;
-function toggleSpectator(){if(mode==='offline'){toast('⛔ Spectator mode only in Multiplayer');return}spectatorMode=!spectatorMode;if(state)state.player.spectating=spectatorMode;toast(spectatorMode?'👁️ SPECTATOR ON':'👁️ SPECTATOR OFF')}
 
 // ---------- PERFORMANCE ----------
 let performanceMode=!1,frameCounter=0;
@@ -441,8 +735,13 @@ document.head.appendChild(style);
 
 // ---------- AUTO-JOIN ----------
 window.addEventListener('load',()=>{
- setupWeaponButtons();initChatUI();updateMainMenuDaily();
+ setupWeaponButtons();
+ initChatUI();
+ setTimeout(()=>{
+  updateMainMenuDaily();
+  updateDailyUI();
+  updateProgressionUI();
+ }, 100);
  const params=new URLSearchParams(location.search),room=params.get('room');
  if(room){showMultiplayer();document.getElementById('joinInput').value=room;setTimeout(joinGame,400)}
- updateDailyUI();updateProgressionUI()
 });
